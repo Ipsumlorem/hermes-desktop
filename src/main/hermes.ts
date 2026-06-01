@@ -1183,16 +1183,30 @@ export function startGateway(profile?: string): boolean {
   }
   const logPath = join(logDir, "gateway-stderr.log");
   const stderrStream = createWriteStream(logPath, { flags: "a" });
+  let stderrStreamClosed = false;
+  const closeStderrStream = (): void => {
+    if (stderrStreamClosed) return;
+    stderrStreamClosed = true;
+    stderrStream.end();
+  };
 
-  gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
-    cwd: HERMES_REPO,
-    env: gatewayEnv,
-    stdio: ["ignore", "ignore", stderrStream],
-    detached: true,
-    ...HIDDEN_SUBPROCESS_OPTIONS,
-  });
+  try {
+    gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
+      cwd: HERMES_REPO,
+      env: gatewayEnv,
+      stdio: ["ignore", "ignore", "pipe"],
+      detached: true,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+  } catch (err) {
+    closeStderrStream();
+    throw err;
+  }
+
+  gatewayProcess.stderr?.pipe(stderrStream);
 
   gatewayProcess.on("error", (err) => {
+    closeStderrStream();
     console.error("[gateway] Failed to spawn gateway process:", err.message);
     gatewayProcess = null;
     gatewayStartedByApp = false;
@@ -1200,6 +1214,7 @@ export function startGateway(profile?: string): boolean {
   });
 
   gatewayProcess.on("close", (code, signal) => {
+    closeStderrStream();
     if (code !== null && code !== 0) {
       console.error(
         `[gateway] Process exited with code ${code}${signal ? ` (signal: ${signal})` : ""}. ` +

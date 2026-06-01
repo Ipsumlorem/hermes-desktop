@@ -1,8 +1,14 @@
 import { EventEmitter } from "events";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
-const { spawned, TEST_HOME, TEST_REPO, healthStatuses, apiRequests } =
-  vi.hoisted(() => {
+const {
+  spawned,
+  TEST_HOME,
+  TEST_REPO,
+  healthStatuses,
+  apiRequests,
+  spawnCalls,
+} = vi.hoisted(() => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -11,12 +17,17 @@ const { spawned, TEST_HOME, TEST_REPO, healthStatuses, apiRequests } =
       spawned: [] as Array<
         EventEmitter & {
           stdout: EventEmitter;
-          stderr: EventEmitter;
+          stderr: EventEmitter & { pipe: ReturnType<typeof vi.fn> };
           killed: boolean;
           kill: ReturnType<typeof vi.fn>;
           unref: ReturnType<typeof vi.fn>;
         }
       >,
+      spawnCalls: [] as Array<{
+        command: string;
+        args?: string[];
+        options?: Record<string, unknown>;
+      }>,
       TEST_HOME: path.join(
         os.tmpdir(),
         `hermes-cli-session-test-${Date.now()}`,
@@ -107,29 +118,35 @@ vi.mock("https", () => ({
 
 vi.mock("child_process", () => ({
   default: {
-    spawn: vi.fn(() => {
+    spawn: vi.fn(
+      (command: string, args?: string[], options?: Record<string, unknown>) => {
+        spawnCalls.push({ command, args, options });
+        const proc = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(),
+          stderr: Object.assign(new EventEmitter(), { pipe: vi.fn() }),
+          killed: false,
+          kill: vi.fn(),
+          unref: vi.fn(),
+        });
+        spawned.push(proc);
+        return proc;
+      },
+    ),
+  },
+  spawn: vi.fn(
+    (command: string, args?: string[], options?: Record<string, unknown>) => {
+      spawnCalls.push({ command, args, options });
       const proc = Object.assign(new EventEmitter(), {
         stdout: new EventEmitter(),
-        stderr: new EventEmitter(),
+        stderr: Object.assign(new EventEmitter(), { pipe: vi.fn() }),
         killed: false,
         kill: vi.fn(),
         unref: vi.fn(),
       });
       spawned.push(proc);
       return proc;
-    }),
-  },
-  spawn: vi.fn(() => {
-    const proc = Object.assign(new EventEmitter(), {
-      stdout: new EventEmitter(),
-      stderr: new EventEmitter(),
-      killed: false,
-      kill: vi.fn(),
-      unref: vi.fn(),
-    });
-    spawned.push(proc);
-    return proc;
-  }),
+    },
+  ),
 }));
 
 vi.mock("../src/main/installer", () => ({
@@ -179,12 +196,23 @@ describe("CLI fallback session id propagation", () => {
   beforeEach(() => {
     healthStatuses.length = 0;
     apiRequests.length = 0;
+    spawnCalls.length = 0;
   });
 
   afterEach(() => {
     stopGateway(true);
     stopHealthPolling();
     spawned.length = 0;
+    spawnCalls.length = 0;
+  });
+
+  it("spawns the gateway with piped stderr before writing it to the log file", () => {
+    expect(startGateway()).toBe(true);
+    expect(spawned).toHaveLength(1);
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0].options?.stdio).toEqual(["ignore", "ignore", "pipe"]);
+    expect(spawned[0].stderr.pipe).toHaveBeenCalledTimes(1);
+    spawned[0].emit("close", 0);
   });
 
   it("captures the quiet CLI session id from stderr so the next desktop turn can resume it", async () => {
