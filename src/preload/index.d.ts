@@ -306,6 +306,7 @@ interface HermesAPI {
     targetLanguage: string,
     preserveTone: boolean,
     sourceLanguage?: string,
+    modelRef?: string,
     profile?: string,
   ) => Promise<string>;
   getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;

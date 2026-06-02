@@ -969,6 +969,7 @@ function setupIPC(): void {
       targetLanguage: string,
       preserveTone: boolean,
       sourceLanguage?: string,
+      modelRef?: string,
       profile?: string,
     ): Promise<string> => {
       await ensureGatewayReadyForChat(profile);
@@ -977,6 +978,7 @@ function setupIPC(): void {
         targetLanguage,
         preserveTone,
         sourceLanguage,
+        modelRef,
         profile,
       );
     },

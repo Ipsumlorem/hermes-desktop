@@ -26,6 +26,7 @@ import {
   getModelConfig,
   readEnv,
 } from "./config";
+import { canonicalProviderBaseUrl } from "./provider-registry";
 import {
   getSshTunnelUrl,
   isSshTunnelActive,
@@ -445,6 +446,131 @@ function buildOneOffRequestHeaders(profile?: string): Record<string, string> {
     }
   }
   return headers;
+}
+
+interface OneOffModelTarget {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiMode?: string | null;
+  name?: string;
+}
+
+function resolveOneOffModelTarget(
+  modelRef?: string,
+): OneOffModelTarget | null {
+  const ref = modelRef?.trim();
+  if (!ref) return null;
+  const match = readModels().find((model) => model.id === ref);
+  if (!match) return null;
+  return {
+    provider: match.provider,
+    model: match.model,
+    baseUrl:
+      (match.baseUrl || canonicalProviderBaseUrl(match.provider) || "").replace(
+        /\/+$/,
+        "",
+      ),
+    apiMode: match.apiMode || null,
+    name: match.name,
+  };
+}
+
+function resolveOneOffApiKey(
+  target: OneOffModelTarget,
+  profile?: string,
+): string {
+  const env = readEnv(profile);
+  for (const { pattern, envKey } of URL_KEY_MAP) {
+    if (pattern.test(target.baseUrl)) {
+      return (env[envKey] || "").trim();
+    }
+  }
+  if (target.name) {
+    const envKey =
+      "CUSTOM_PROVIDER_" +
+      target.name.replace(/[^A-Za-z0-9]/g, "_").toUpperCase() +
+      "_KEY";
+    if (env[envKey]) return env[envKey].trim();
+  }
+  if (target.provider === "anthropic" || target.apiMode === "anthropic_messages") {
+    return (env.ANTHROPIC_API_KEY || "").trim();
+  }
+  return (env.CUSTOM_API_KEY || env.OPENAI_API_KEY || "").trim();
+}
+
+async function runDirectOneOffCompletion(
+  target: OneOffModelTarget,
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  profile?: string,
+): Promise<string> {
+  if (!target.baseUrl || !target.model) {
+    throw new Error("The selected translation model is incomplete.");
+  }
+  const apiKey = resolveOneOffApiKey(target, profile);
+  const isAnthropic =
+    target.provider === "anthropic" ||
+    target.apiMode === "anthropic_messages";
+
+  if (isAnthropic) {
+    const [system, user] = messages;
+    const res = await fetch(`${target.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+      },
+      body: JSON.stringify({
+        model: target.model,
+        system: system?.content || "",
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content: user?.content || "",
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+      );
+    }
+    const payload = (await res.json().catch(() => null)) as
+      | {
+          content?: Array<{ type?: string; text?: string }>;
+        }
+      | null;
+    return (
+      payload?.content
+        ?.map((part) => (part?.type === "text" ? part.text || "" : ""))
+        .join("") || ""
+    );
+  }
+
+  const res = await fetch(`${target.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      model: target.model,
+      messages,
+      stream: false,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+    );
+  }
+  const payload = await res.json().catch(() => null);
+  return extractCompletionText(payload);
 }
 
 function extractCompletionText(payload: unknown): string {
@@ -1153,21 +1279,23 @@ export async function translateText(
   targetLanguage: string,
   preserveTone: boolean,
   sourceLanguage = "auto",
+  modelRef?: string,
   profile?: string,
 ): Promise<string> {
   if (!text.trim()) return text;
   if (!targetLanguage.trim()) {
     throw new Error("Choose a target language before translating.");
   }
-  const translated = await runOneOffChatCompletion(
-    buildTranslationMessages(
-      text,
-      targetLanguage.trim(),
-      preserveTone,
-      sourceLanguage.trim() || "auto",
-    ),
-    profile,
+  const messages = buildTranslationMessages(
+    text,
+    targetLanguage.trim(),
+    preserveTone,
+    sourceLanguage.trim() || "auto",
   );
+  const target = resolveOneOffModelTarget(modelRef);
+  const translated = target
+    ? await runDirectOneOffCompletion(target, messages, profile)
+    : await runOneOffChatCompletion(messages, profile);
   return translated || text;
 }
 
