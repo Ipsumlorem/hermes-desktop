@@ -503,9 +503,12 @@ async function runDirectOneOffCompletion(
   target: OneOffModelTarget,
   messages: Array<{ role: "system" | "user"; content: string }>,
   profile?: string,
+  failureLabel = "Request",
 ): Promise<string> {
   if (!target.baseUrl || !target.model) {
-    throw new Error("The selected translation model is incomplete.");
+    throw new Error(
+      `The selected ${failureLabel.toLowerCase()} model is incomplete.`,
+    );
   }
   const apiKey = resolveOneOffApiKey(target, profile);
   const isAnthropic =
@@ -536,7 +539,7 @@ async function runDirectOneOffCompletion(
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(
-        `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+        `${failureLabel} failed (${res.status}). ${body.slice(0, 200)}`.trim(),
       );
     }
     const payload = (await res.json().catch(() => null)) as
@@ -566,7 +569,7 @@ async function runDirectOneOffCompletion(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+      `${failureLabel} failed (${res.status}). ${body.slice(0, 200)}`.trim(),
     );
   }
   const payload = await res.json().catch(() => null);
@@ -601,6 +604,7 @@ function extractCompletionText(payload: unknown): string {
 async function runOneOffChatCompletion(
   messages: Array<{ role: "system" | "user"; content: string }>,
   profile?: string,
+  failureLabel = "Request",
 ): Promise<string> {
   const mc = getModelConfig(profile);
   const res = await fetch(`${getApiUrl(profile)}/v1/chat/completions`, {
@@ -615,7 +619,7 @@ async function runOneOffChatCompletion(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+      `${failureLabel} failed (${res.status}). ${body.slice(0, 200)}`.trim(),
     );
   }
   const payload = await res.json().catch(() => null);
@@ -646,6 +650,33 @@ function buildTranslationMessages(
         text,
     },
   ];
+}
+
+function buildAutocompleteMessages(
+  draft: string,
+): Array<{ role: "system" | "user"; content: string }> {
+  return [
+    {
+      role: "system",
+      content:
+        "You are an autocomplete assistant. Continue the user's draft with one short continuation that can be appended immediately. " +
+        "Return only the continuation text. Do not repeat the existing draft. Do not add quotes, bullets, labels, or explanations. " +
+        "Keep it under 12 words and preserve the draft's language and tone. " +
+        "If no useful continuation is obvious, return an empty string.",
+    },
+    {
+      role: "user",
+      content: `Continue this draft:\n\n${draft}`,
+    },
+  ];
+}
+
+function sanitizeAutocompleteSuggestion(text: string): string {
+  return text
+    .replace(/^["'`\s]+|["'`\s]+$/g, "")
+    .replace(/\r?\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function sendMessageViaApi(
@@ -1294,9 +1325,32 @@ export async function translateText(
   );
   const target = resolveOneOffModelTarget(modelRef);
   const translated = target
-    ? await runDirectOneOffCompletion(target, messages, profile)
-    : await runOneOffChatCompletion(messages, profile);
+    ? await runDirectOneOffCompletion(target, messages, profile, "Translation")
+    : await runOneOffChatCompletion(messages, profile, "Translation");
   return translated || text;
+}
+
+export async function suggestAutocomplete(
+  draft: string,
+  modelRef?: string,
+  profile?: string,
+): Promise<string> {
+  if (!draft.trim()) return "";
+  const messages = buildAutocompleteMessages(draft);
+  const target = resolveOneOffModelTarget(modelRef);
+  const suggestion = target
+    ? await runDirectOneOffCompletion(
+        target,
+        messages,
+        profile,
+        "Autocomplete suggestion",
+      )
+    : await runOneOffChatCompletion(
+        messages,
+        profile,
+        "Autocomplete suggestion",
+      );
+  return sanitizeAutocompleteSuggestion(suggestion);
 }
 
 // ────────────────────────────────────────────────────

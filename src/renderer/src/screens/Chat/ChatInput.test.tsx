@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "./ChatInput";
 
 vi.mock("../../components/useI18n", () => ({
@@ -7,6 +7,10 @@ vi.mock("../../components/useI18n", () => ({
     t: (key: string) => key,
   }),
 }));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("ChatInput", () => {
   it("passes spellCheck=true to the composer textarea", () => {
@@ -186,5 +190,77 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textarea, { key: "Tab" });
 
     expect(textarea.value).toBe("hello ");
+  });
+
+  it("shows llm autocomplete suggestions after debounce", async () => {
+    vi.useFakeTimers();
+    window.hermesAPI = {
+      suggestAutocomplete: vi.fn().mockResolvedValue("there"),
+    } as unknown as typeof window.hermesAPI;
+
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "llm",
+          modelRef: "model-1",
+          debounceMs: 50,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, { target: { value: "he" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+
+    expect(window.hermesAPI.suggestAutocomplete).toHaveBeenCalledWith(
+      "he",
+      "model-1",
+      undefined,
+    );
+    expect(screen.getByText("there")).toBeInTheDocument();
+  });
+
+  it("accepts an llm autocomplete suggestion with Tab", async () => {
+    vi.useFakeTimers();
+    window.hermesAPI = {
+      suggestAutocomplete: vi.fn().mockResolvedValue("there"),
+    } as unknown as typeof window.hermesAPI;
+
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "llm",
+          modelRef: "model-1",
+          debounceMs: 50,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, { target: { value: "he" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+
+    expect(textarea.value).toBe("he there");
   });
 });

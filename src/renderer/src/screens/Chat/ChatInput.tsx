@@ -102,6 +102,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [autocompleteSelectedIndex, setAutocompleteSelectedIndex] =
       useState(0);
     const [inputFocused, setInputFocused] = useState(false);
+    const [llmAutocompleteSuggestion, setLlmAutocompleteSuggestion] =
+      useState("");
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
     const [translationError, setTranslationError] = useState<string | null>(
@@ -117,6 +119,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const slashMenuRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const autocompleteRequestIdRef = useRef(0);
 
     // Voice input. We snapshot whatever was already typed when recording starts
     // (`voiceBaseRef`), then rebuild the field as `base + livetranscript` on
@@ -220,6 +223,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setAttachments([]);
           setAttachmentError(null);
           setTranslationError(null);
+          setLlmAutocompleteSuggestion("");
           setSelectionRange({ start: 0, end: 0 });
           setAutocompleteSelectedIndex(0);
           setInputFocused(false);
@@ -276,7 +280,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     );
 
     const autocompleteEnabled =
+      !!autocompleteSettings && autocompleteSettings.minChars > 0;
+    const dictionaryAutocompleteEnabled =
       autocompleteSettings?.mode === "dictionary" &&
+      autocompleteSettings.minChars > 0;
+    const llmAutocompleteEnabled =
+      autocompleteSettings?.mode === "llm" &&
       autocompleteSettings.minChars > 0;
     const autocompleteWords = useMemo(() => {
       const map = new Map<string, string>();
@@ -307,16 +316,53 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         prefix,
       };
     }, [autocompleteEnabled, autocompleteSettings, input, selectionRange, slashMenuOpen]);
+    useEffect(() => {
+      if (!llmAutocompleteEnabled || !autocompleteRange || !inputFocused) {
+        setLlmAutocompleteSuggestion("");
+        return;
+      }
+      const requestId = ++autocompleteRequestIdRef.current;
+      const timer = window.setTimeout(() => {
+        void window.hermesAPI
+          .suggestAutocomplete(input, autocompleteSettings.modelRef, profile)
+          .then((suggestion) => {
+            if (autocompleteRequestIdRef.current !== requestId) return;
+            setLlmAutocompleteSuggestion(suggestion);
+          })
+          .catch(() => {
+            if (autocompleteRequestIdRef.current !== requestId) return;
+            setLlmAutocompleteSuggestion("");
+          });
+      }, autocompleteSettings.debounceMs);
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }, [
+      autocompleteRange,
+      autocompleteSettings,
+      input,
+      inputFocused,
+      llmAutocompleteEnabled,
+      profile,
+    ]);
     const autocompleteSuggestions = useMemo(() => {
       if (!autocompleteRange) return [];
-      const prefix = autocompleteRange.prefix.toLowerCase();
-      return autocompleteWords
-        .filter((word) => {
-          const normalized = word.toLowerCase();
-          return normalized.startsWith(prefix) && normalized !== prefix;
-        })
-        .slice(0, 5);
-    }, [autocompleteRange, autocompleteWords]);
+      if (dictionaryAutocompleteEnabled) {
+        const prefix = autocompleteRange.prefix.toLowerCase();
+        return autocompleteWords
+          .filter((word) => {
+            const normalized = word.toLowerCase();
+            return normalized.startsWith(prefix) && normalized !== prefix;
+          })
+          .slice(0, 5);
+      }
+      return llmAutocompleteSuggestion ? [llmAutocompleteSuggestion] : [];
+    }, [
+      autocompleteRange,
+      autocompleteWords,
+      dictionaryAutocompleteEnabled,
+      llmAutocompleteSuggestion,
+    ]);
     const autocompleteOpen =
       inputFocused && autocompleteSuggestions.length > 0;
 
@@ -339,6 +385,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setAttachments([]);
       setAttachmentError(null);
       setTranslationError(null);
+      setLlmAutocompleteSuggestion("");
       setSelectionRange({ start: 0, end: 0 });
       setAutocompleteSelectedIndex(0);
       if (inputRef.current) inputRef.current.style.height = "auto";
@@ -382,6 +429,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const value = e.target.value;
       setInput(value);
       setTranslationError(null);
+      setLlmAutocompleteSuggestion("");
       setAutocompleteSelectedIndex(0);
       setSelectionRange({
         start: e.target.selectionStart ?? 0,
@@ -427,16 +475,26 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     function acceptAutocomplete(word: string): void {
-      if (!autocompleteRange) return;
-      const nextInput =
-        `${input.slice(0, autocompleteRange.start)}${word} ` +
-        input.slice(autocompleteRange.end);
+      let nextInput = input;
+      if (dictionaryAutocompleteEnabled && autocompleteRange) {
+        nextInput =
+          `${input.slice(0, autocompleteRange.start)}${word} ` +
+          input.slice(autocompleteRange.end);
+      } else {
+        const cleanWord = word.trimStart();
+        const needsSpace =
+          nextInput.length > 0 &&
+          !/\s$/.test(nextInput) &&
+          !/^[,.;:!?)]/.test(cleanWord);
+        nextInput = `${nextInput}${needsSpace ? " " : ""}${cleanWord}`;
+      }
       setInput(nextInput);
       requestAnimationFrame(() => {
         autoResize();
         inputRef.current?.focus();
         inputRef.current?.setSelectionRange(nextInput.length, nextInput.length);
       });
+      setLlmAutocompleteSuggestion("");
       setAutocompleteSelectedIndex(0);
     }
 

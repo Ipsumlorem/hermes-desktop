@@ -68,6 +68,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "get-writing-assist-settings",
     "set-writing-assist-settings",
     "translate-text",
+    "suggest-autocomplete",
   ];
 
   for (const ch of newChannels) {
