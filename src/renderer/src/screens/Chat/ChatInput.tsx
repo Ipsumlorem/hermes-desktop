@@ -53,6 +53,7 @@ interface ChatInputProps {
   remoteMode?: boolean;
   spellCheck?: boolean;
   translationSettings?: WritingAssistTranslationSettings;
+  translationModelMissing?: boolean;
   /** Active profile — used to resolve the provider for voice transcription. */
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
@@ -77,6 +78,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       remoteMode,
       spellCheck = true,
       translationSettings,
+      translationModelMissing = false,
       profile,
       contextUsage,
       readiness,
@@ -263,9 +265,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       [slashMenuOpen, slashFilter],
     );
 
+    const translationConfigured = translationSettings?.mode === "on_demand";
+    const translationTargetConfigured =
+      !!translationSettings?.targetLanguage.trim();
     const translationEnabled =
-      translationSettings?.mode === "on_demand" &&
-      !!translationSettings.targetLanguage.trim();
+      translationConfigured && translationTargetConfigured;
     const hasSelection = selectionRange.end > selectionRange.start;
     const readinessOk = readiness?.ok !== false;
     const canTranslate =
@@ -365,8 +369,39 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       });
     }
 
+    function normalizeTranslationError(error: unknown): string {
+      if (!(error instanceof Error) || !error.message) {
+        return t("chat.translationFailed");
+      }
+      if (error.message.includes("Choose a target language")) {
+        return t("chat.translationDisabledTarget");
+      }
+      if (error.message.includes("selected translation model is incomplete")) {
+        return t("chat.translationModelInvalid");
+      }
+      return error.message;
+    }
+
+    function translationButtonTitle(scope: "draft" | "selection"): string {
+      if (translatingScope) return t("chat.translating");
+      if (isLoading) return t("chat.translationDisabledBusy");
+      if (!readinessOk) return t("chat.translationDisabledUnavailable");
+      if (!translationTargetConfigured) return t("chat.translationDisabledTarget");
+      if (scope === "selection" && !hasSelection) {
+        return t("chat.translationDisabledSelection");
+      }
+      if (translationModelMissing) return t("chat.translationModelFallback");
+      return scope === "selection"
+        ? t("chat.translateSelection")
+        : t("chat.translateDraft");
+    }
+
     async function handleTranslate(scope: "draft" | "selection"): Promise<void> {
-      if (!translationSettings || !translationEnabled) return;
+      if (!translationSettings || !translationConfigured) return;
+      if (!translationTargetConfigured) {
+        setTranslationError(t("chat.translationDisabledTarget"));
+        return;
+      }
       const start = scope === "selection" ? selectionRange.start : 0;
       const end = scope === "selection" ? selectionRange.end : input.length;
       const textToTranslate =
@@ -401,8 +436,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             );
           });
         }
-      } catch {
-        setTranslationError(t("chat.translationFailed"));
+      } catch (error) {
+        setTranslationError(normalizeTranslationError(error));
       } finally {
         setTranslatingScope(null);
       }
@@ -644,7 +679,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 <Mic size={16} />
               </button>
             )}
-            {translationEnabled && (
+            {translationConfigured && (
               <>
                 <span className="chat-input-toolbar-divider" aria-hidden />
                 {hasSelection && (
@@ -652,7 +687,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     className="chat-attach-btn"
                     onClick={() => void handleTranslate("selection")}
                     disabled={!canTranslate}
-                    title={t("chat.translateSelection")}
+                    title={translationButtonTitle("selection")}
                     aria-label={t("chat.translateSelection")}
                     type="button"
                   >
@@ -667,11 +702,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   className="chat-attach-btn"
                   onClick={() => void handleTranslate("draft")}
                   disabled={!canTranslate}
-                  title={
-                    translatingScope === "draft"
-                      ? t("chat.translating")
-                      : t("chat.translateDraft")
-                  }
+                  title={translationButtonTitle("draft")}
                   aria-label={t("chat.translateDraft")}
                   type="button"
                 >

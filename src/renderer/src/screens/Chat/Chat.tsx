@@ -30,6 +30,10 @@ interface QueuedMessage {
   attachments: Attachment[];
 }
 
+interface SavedModelRef {
+  id: string;
+}
+
 export type { ChatMessage } from "./types";
 
 interface ChatProps {
@@ -72,6 +76,8 @@ function Chat({
   const [writingAssist, setWritingAssist] = useState<WritingAssistSettings>(
     DEFAULT_WRITING_ASSIST_SETTINGS,
   );
+  const [translationModelMissing, setTranslationModelMissing] =
+    useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,11 +94,24 @@ function Chat({
     let cancelled = false;
     (async (): Promise<void> => {
       try {
-        const settings = await window.hermesAPI.getWritingAssistSettings();
-        if (!cancelled) setWritingAssist(settings);
+        const [settings, models] = await Promise.all([
+          window.hermesAPI.getWritingAssistSettings(),
+          window.hermesAPI.listModels(),
+        ]);
+        if (!cancelled) {
+          setWritingAssist(settings);
+          setTranslationModelMissing(
+            !!settings.translation.modelRef &&
+              !models.some(
+                (model: SavedModelRef) =>
+                  model.id === settings.translation.modelRef,
+              ),
+          );
+        }
       } catch {
         if (!cancelled) {
           setWritingAssist(DEFAULT_WRITING_ASSIST_SETTINGS);
+          setTranslationModelMissing(false);
         }
       }
     })();
@@ -429,6 +448,7 @@ function Chat({
             writingAssist.spellcheck.mode === "native"
           }
           translationSettings={translationSettings}
+          translationModelMissing={translationModelMissing}
           profile={profile}
           contextUsage={contextUsage}
           readiness={readiness}
