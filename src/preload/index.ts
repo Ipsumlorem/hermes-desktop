@@ -276,6 +276,13 @@ const hermesAPI = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  transcribeAudio: (
+    audio: Uint8Array,
+    mimeType: string,
+    profile?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
+
   getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
 
@@ -407,6 +414,8 @@ const hermesAPI = {
       cost?: number;
       rateLimitRemaining?: number;
       rateLimitReset?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
     }) => void,
   ): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, usage: unknown): void =>
@@ -418,6 +427,8 @@ const hermesAPI = {
           cost?: number;
           rateLimitRemaining?: number;
           rateLimitReset?: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
         },
       );
     ipcRenderer.on("chat-usage", handler);
