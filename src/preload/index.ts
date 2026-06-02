@@ -288,6 +288,7 @@ const hermesAPI = {
     targetLanguage: string,
     preserveTone: boolean,
     sourceLanguage?: string,
+    modelRef?: string,
     profile?: string,
   ): Promise<string> =>
     ipcRenderer.invoke(
@@ -296,6 +297,7 @@ const hermesAPI = {
       targetLanguage,
       preserveTone,
       sourceLanguage,
+      modelRef,
       profile,
     ),
 

@@ -381,6 +381,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           translationSettings.targetLanguage,
           translationSettings.preserveTone,
           translationSettings.sourceLanguage,
+          translationSettings.modelRef,
           profile,
         );
         if (scope === "selection") {
