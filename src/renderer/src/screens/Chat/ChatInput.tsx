@@ -69,7 +69,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       spellCheck = true,
       profile,
       contextUsage,
-      spellCheck = true,
       readiness,
       toolbarExtras,
       onSubmit,
