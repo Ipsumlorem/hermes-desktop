@@ -97,9 +97,11 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("getWritingAssistSettings");
     expect(preloadMethods).toContain("setWritingAssistSettings");
     expect(preloadMethods).toContain("translateText");
+    expect(preloadMethods).toContain("suggestAutocomplete");
     expect(typeMethods).toContain("getWritingAssistSettings");
     expect(typeMethods).toContain("setWritingAssistSettings");
     expect(typeMethods).toContain("translateText");
+    expect(typeMethods).toContain("suggestAutocomplete");
   });
 });
 

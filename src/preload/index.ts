@@ -301,6 +301,13 @@ const hermesAPI = {
       profile,
     ),
 
+  suggestAutocomplete: (
+    draft: string,
+    modelRef?: string,
+    profile?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("suggest-autocomplete", draft, modelRef, profile),
+
   getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
 

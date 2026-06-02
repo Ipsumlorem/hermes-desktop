@@ -49,6 +49,7 @@ import {
   isRemoteMode,
   isRemoteOnlyMode,
   sendMessage,
+  suggestAutocomplete,
   transcribeAudio,
   translateText,
   startGateway,
@@ -981,6 +982,21 @@ function setupIPC(): void {
         modelRef,
         profile,
       );
+    },
+  );
+
+  ipcMain.handle(
+    "suggest-autocomplete",
+    async (
+      _event,
+      draft: string,
+      modelRef?: string,
+      profile?: string,
+    ): Promise<string> => {
+      if (!modelRef?.trim()) {
+        await ensureGatewayReadyForChat(profile);
+      }
+      return suggestAutocomplete(draft, modelRef, profile);
     },
   );
 

@@ -309,6 +309,11 @@ interface HermesAPI {
     modelRef?: string,
     profile?: string,
   ) => Promise<string>;
+  suggestAutocomplete: (
+    draft: string,
+    modelRef?: string,
+    profile?: string,
+  ) => Promise<string>;
   getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;
   generateApiServerKey: (profile?: string) => Promise<{ key: string }>;
   copyToClipboard: (text: string) => Promise<void>;
