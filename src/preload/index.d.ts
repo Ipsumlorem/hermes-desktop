@@ -301,6 +301,13 @@ interface HermesAPI {
     mimeType: string,
     profile?: string,
   ) => Promise<string>;
+  translateText: (
+    text: string,
+    targetLanguage: string,
+    preserveTone: boolean,
+    sourceLanguage?: string,
+    profile?: string,
+  ) => Promise<string>;
   getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;
   generateApiServerKey: (profile?: string) => Promise<{ key: string }>;
   copyToClipboard: (text: string) => Promise<void>;

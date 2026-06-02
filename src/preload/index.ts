@@ -283,6 +283,22 @@ const hermesAPI = {
   ): Promise<string> =>
     ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
 
+  translateText: (
+    text: string,
+    targetLanguage: string,
+    preserveTone: boolean,
+    sourceLanguage?: string,
+    profile?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke(
+      "translate-text",
+      text,
+      targetLanguage,
+      preserveTone,
+      sourceLanguage,
+      profile,
+    ),
+
   getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
 

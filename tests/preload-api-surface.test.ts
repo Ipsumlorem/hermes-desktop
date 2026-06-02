@@ -96,8 +96,10 @@ describe("New APIs from v0.8/v0.9 features", () => {
   it("has writing assist settings APIs", () => {
     expect(preloadMethods).toContain("getWritingAssistSettings");
     expect(preloadMethods).toContain("setWritingAssistSettings");
+    expect(preloadMethods).toContain("translateText");
     expect(typeMethods).toContain("getWritingAssistSettings");
     expect(typeMethods).toContain("setWritingAssistSettings");
+    expect(typeMethods).toContain("translateText");
   });
 });
 

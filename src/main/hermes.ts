@@ -433,6 +433,95 @@ export function contextFolderSystemMessage(
   };
 }
 
+function buildOneOffRequestHeaders(profile?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...getRemoteAuthHeader(),
+  };
+  if (!isRemoteMode()) {
+    const apiServerKey = getApiServerKey(profile);
+    if (apiServerKey) {
+      headers.Authorization = `Bearer ${apiServerKey}`;
+    }
+  }
+  return headers;
+}
+
+function extractCompletionText(payload: unknown): string {
+  const data = payload as {
+    choices?: Array<{
+      message?: {
+        content?:
+          | string
+          | Array<{ type?: string; text?: string; content?: string }>;
+      };
+    }>;
+  } | null;
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (!part || typeof part !== "object") return "";
+        if (typeof part.text === "string") return part.text;
+        if (typeof part.content === "string") return part.content;
+        return "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+async function runOneOffChatCompletion(
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  profile?: string,
+): Promise<string> {
+  const mc = getModelConfig(profile);
+  const res = await fetch(`${getApiUrl(profile)}/v1/chat/completions`, {
+    method: "POST",
+    headers: buildOneOffRequestHeaders(profile),
+    body: JSON.stringify({
+      model: mc.model || "hermes-agent",
+      messages,
+      stream: false,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Translation failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+    );
+  }
+  const payload = await res.json().catch(() => null);
+  return extractCompletionText(payload);
+}
+
+function buildTranslationMessages(
+  text: string,
+  targetLanguage: string,
+  preserveTone: boolean,
+  sourceLanguage = "auto",
+): Array<{ role: "system" | "user"; content: string }> {
+  const toneInstruction = preserveTone
+    ? "Preserve tone, intent, markdown, code fences, lists, and line breaks."
+    : "Use a natural tone while preserving meaning, markdown, code fences, lists, and line breaks.";
+  return [
+    {
+      role: "system",
+      content:
+        "You are a translation assistant. Translate the user's text and return only the translated text. " +
+        "Do not add commentary, quotes, or explanations. " +
+        toneInstruction,
+    },
+    {
+      role: "user",
+      content:
+        `Translate the following text from ${sourceLanguage} to ${targetLanguage}.\n\n` +
+        text,
+    },
+  ];
+}
+
 function sendMessageViaApi(
   message: string,
   cb: ChatCallbacks,
@@ -1057,6 +1146,29 @@ function sendMessageViaCli(
       }, 3000);
     },
   };
+}
+
+export async function translateText(
+  text: string,
+  targetLanguage: string,
+  preserveTone: boolean,
+  sourceLanguage = "auto",
+  profile?: string,
+): Promise<string> {
+  if (!text.trim()) return text;
+  if (!targetLanguage.trim()) {
+    throw new Error("Choose a target language before translating.");
+  }
+  const translated = await runOneOffChatCompletion(
+    buildTranslationMessages(
+      text,
+      targetLanguage.trim(),
+      preserveTone,
+      sourceLanguage.trim() || "auto",
+    ),
+    profile,
+  );
+  return translated || text;
 }
 
 // ────────────────────────────────────────────────────
