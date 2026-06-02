@@ -7,7 +7,14 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Send, Square as Stop, Slash, Paperclip, Mic } from "lucide-react";
+import {
+  Send,
+  Square as Stop,
+  Slash,
+  Paperclip,
+  Mic,
+  Languages,
+} from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -21,6 +28,7 @@ import {
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import type { Attachment } from "../../../../shared/attachments";
+import type { WritingAssistTranslationSettings } from "../../../../shared/writing-assist";
 
 export interface ChatInputHandle {
   setText(text: string): void;
@@ -44,6 +52,7 @@ interface ChatInputProps {
   sessionId?: string | null;
   remoteMode?: boolean;
   spellCheck?: boolean;
+  translationSettings?: WritingAssistTranslationSettings;
   /** Active profile — used to resolve the provider for voice transcription. */
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
@@ -67,6 +76,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       sessionId,
       remoteMode,
       spellCheck = true,
+      translationSettings,
       profile,
       contextUsage,
       readiness,
@@ -84,6 +94,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
+    const [translationError, setTranslationError] = useState<string | null>(
+      null,
+    );
+    const [translatingScope, setTranslatingScope] = useState<
+      "draft" | "selection" | null
+    >(null);
+    const [selectionRange, setSelectionRange] = useState({
+      start: 0,
+      end: 0,
+    });
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const slashMenuRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +209,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setInput("");
           setAttachments([]);
           setAttachmentError(null);
+          setTranslationError(null);
+          setSelectionRange({ start: 0, end: 0 });
           if (inputRef.current) inputRef.current.style.height = "auto";
         },
         focus(): void {
@@ -241,11 +263,24 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       [slashMenuOpen, slashFilter],
     );
 
+    const translationEnabled =
+      translationSettings?.mode === "on_demand" &&
+      !!translationSettings.targetLanguage.trim();
+    const hasSelection = selectionRange.end > selectionRange.start;
+    const readinessOk = readiness?.ok !== false;
+    const canTranslate =
+      translationEnabled &&
+      readinessOk &&
+      !isLoading &&
+      translatingScope === null;
+
     function clearAfterSend(text: string): void {
       history.push(text);
       setInput("");
       setAttachments([]);
       setAttachmentError(null);
+      setTranslationError(null);
+      setSelectionRange({ start: 0, end: 0 });
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 
@@ -286,6 +321,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     ): void {
       const value = e.target.value;
       setInput(value);
+      setTranslationError(null);
+      setSelectionRange({
+        start: e.target.selectionStart ?? 0,
+        end: e.target.selectionEnd ?? 0,
+      });
 
       const target = e.target;
       requestAnimationFrame(() => {
@@ -300,6 +340,70 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setSlashSelectedIndex(0);
       } else if (slashMenuOpen) {
         setSlashMenuOpen(false);
+      }
+    }
+
+    function updateSelectionFromTarget(target: HTMLTextAreaElement): void {
+      setSelectionRange({
+        start: target.selectionStart ?? 0,
+        end: target.selectionEnd ?? 0,
+      });
+    }
+
+    function replaceTextRange(
+      start: number,
+      end: number,
+      replacement: string,
+    ): void {
+      const nextInput = `${input.slice(0, start)}${replacement}${input.slice(end)}`;
+      setInput(nextInput);
+      requestAnimationFrame(() => {
+        autoResize();
+        const nextCursor = start + replacement.length;
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(nextCursor, nextCursor);
+      });
+    }
+
+    async function handleTranslate(scope: "draft" | "selection"): Promise<void> {
+      if (!translationSettings || !translationEnabled) return;
+      const start = scope === "selection" ? selectionRange.start : 0;
+      const end = scope === "selection" ? selectionRange.end : input.length;
+      const textToTranslate =
+        scope === "selection" ? input.slice(start, end) : input;
+      if (!textToTranslate.trim()) return;
+
+      setTranslationError(null);
+      setTranslatingScope(scope);
+      try {
+        const translated = await window.hermesAPI.translateText(
+          textToTranslate,
+          translationSettings.targetLanguage,
+          translationSettings.preserveTone,
+          translationSettings.sourceLanguage,
+          profile,
+        );
+        if (scope === "selection") {
+          replaceTextRange(start, end, translated);
+        } else {
+          setInput(translated);
+          setSelectionRange({
+            start: translated.length,
+            end: translated.length,
+          });
+          requestAnimationFrame(() => {
+            autoResize();
+            inputRef.current?.focus();
+            inputRef.current?.setSelectionRange(
+              translated.length,
+              translated.length,
+            );
+          });
+        }
+      } catch {
+        setTranslationError(t("chat.translationFailed"));
+      } finally {
+        setTranslatingScope(null);
       }
     }
 
@@ -385,7 +489,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // with a missing API key would just fail later. The !isLoading gate
     // is intentionally dropped here vs. the pre-merge version, so users
     // can queue messages while the agent is mid-response.
-    const readinessOk = readiness?.ok !== false;
     const canSend =
       (input.trim().length > 0 || attachments.length > 0) && readinessOk;
 
@@ -472,6 +575,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             {voice.error}
           </div>
         )}
+        {translationError && (
+          <div className="chat-attachment-error" role="alert">
+            {translationError}
+          </div>
+        )}
         <div className="chat-input-wrapper">
           <input
             ref={fileInputRef}
@@ -489,6 +597,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            onSelect={(e) => updateSelectionFromTarget(e.currentTarget)}
+            onClick={(e) => updateSelectionFromTarget(e.currentTarget)}
+            onKeyUp={(e) => updateSelectionFromTarget(e.currentTarget)}
             rows={1}
             autoFocus
           />
@@ -531,6 +642,45 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               >
                 <Mic size={16} />
               </button>
+            )}
+            {translationEnabled && (
+              <>
+                <span className="chat-input-toolbar-divider" aria-hidden />
+                {hasSelection && (
+                  <button
+                    className="chat-attach-btn"
+                    onClick={() => void handleTranslate("selection")}
+                    disabled={!canTranslate}
+                    title={t("chat.translateSelection")}
+                    aria-label={t("chat.translateSelection")}
+                    type="button"
+                  >
+                    {translatingScope === "selection" ? (
+                      <Stop size={16} />
+                    ) : (
+                      <Languages size={16} />
+                    )}
+                  </button>
+                )}
+                <button
+                  className="chat-attach-btn"
+                  onClick={() => void handleTranslate("draft")}
+                  disabled={!canTranslate}
+                  title={
+                    translatingScope === "draft"
+                      ? t("chat.translating")
+                      : t("chat.translateDraft")
+                  }
+                  aria-label={t("chat.translateDraft")}
+                  type="button"
+                >
+                  {translatingScope === "draft" ? (
+                    <Stop size={16} />
+                  ) : (
+                    <Languages size={16} />
+                  )}
+                </button>
+              </>
             )}
             {toolbarExtras && (
               <>

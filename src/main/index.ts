@@ -50,6 +50,7 @@ import {
   isRemoteOnlyMode,
   sendMessage,
   transcribeAudio,
+  translateText,
   startGateway,
   stopGateway,
   isGatewayRunning,
@@ -247,6 +248,27 @@ process.on("unhandledRejection", (reason) => {
 
 let mainWindow: BrowserWindow | null = null;
 let currentChatAbort: (() => void) | null = null;
+
+async function ensureGatewayReadyForChat(profile?: string): Promise<void> {
+  if (!isRemoteMode() && !isGatewayRunning(profile)) {
+    startGateway(profile);
+  }
+
+  await ensureSshTunnelIfNeeded();
+  const conn = getConnectionConfig();
+  if (conn.mode === "ssh" && conn.ssh) {
+    const gatewayRunning = await sshGatewayStatus(conn.ssh);
+    const tunnelHealthy = await isSshTunnelHealthy();
+    if (!gatewayRunning || !tunnelHealthy) {
+      await sshStartGateway(conn.ssh);
+      await startSshTunnel(conn.ssh);
+    }
+    if (!getRemoteAuthHeader().Authorization) {
+      const key = await sshReadRemoteApiKey(conn.ssh);
+      setSshRemoteApiKey(key);
+    }
+  }
+}
 
 function openExternalUrl(rawUrl: unknown): void {
   if (!isAllowedExternalUrl(rawUrl)) {
@@ -836,26 +858,7 @@ function setupIPC(): void {
       attachments?: Attachment[],
       contextFolder?: string,
     ) => {
-      if (!isRemoteMode() && !isGatewayRunning(profile)) {
-        startGateway(profile);
-      }
-
-      await ensureSshTunnelIfNeeded();
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        const gatewayRunning = await sshGatewayStatus(conn.ssh);
-        const tunnelHealthy = await isSshTunnelHealthy();
-        if (!gatewayRunning || !tunnelHealthy) {
-          await sshStartGateway(conn.ssh);
-          await startSshTunnel(conn.ssh);
-        }
-        // Always ensure the API key is cached — the key may not have been
-        // read yet if the app-launch auto-start failed silently (#212).
-        if (!getRemoteAuthHeader().Authorization) {
-          const key = await sshReadRemoteApiKey(conn.ssh);
-          setSshRemoteApiKey(key);
-        }
-      }
+      await ensureGatewayReadyForChat(profile);
 
       if (currentChatAbort) {
         currentChatAbort();
@@ -955,6 +958,27 @@ function setupIPC(): void {
 
       currentChatAbort = handle.abort;
       return promise;
+    },
+  );
+
+  ipcMain.handle(
+    "translate-text",
+    async (
+      _event,
+      text: string,
+      targetLanguage: string,
+      preserveTone: boolean,
+      sourceLanguage?: string,
+      profile?: string,
+    ): Promise<string> => {
+      await ensureGatewayReadyForChat(profile);
+      return translateText(
+        text,
+        targetLanguage,
+        preserveTone,
+        sourceLanguage,
+        profile,
+      );
     },
   );
 

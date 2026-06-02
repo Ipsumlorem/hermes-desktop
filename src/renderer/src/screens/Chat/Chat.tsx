@@ -17,7 +17,10 @@ import { buildChatTranscript } from "./transcriptUtils";
 import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import type { Attachment } from "../../../../shared/attachments";
 import type { ChatMessage, UsageState } from "./types";
-import type { WritingAssistSettings } from "../../../../shared/writing-assist";
+import type {
+  WritingAssistSettings,
+  WritingAssistTranslationSettings,
+} from "../../../../shared/writing-assist";
 import { DEFAULT_WRITING_ASSIST_SETTINGS } from "../../../../shared/writing-assist";
 import type { ContextUsage } from "./ContextGauge";
 import { contextWindowForModel } from "./contextWindows";
@@ -365,6 +368,8 @@ function Chat({
         cacheWriteTokens: usage.cacheWriteTokens,
       }
     : null;
+  const translationSettings: WritingAssistTranslationSettings | undefined =
+    writingAssist.enabled ? writingAssist.translation : undefined;
 
   return (
     <div
@@ -423,6 +428,7 @@ function Chat({
             writingAssist.enabled &&
             writingAssist.spellcheck.mode === "native"
           }
+          translationSettings={translationSettings}
           profile={profile}
           contextUsage={contextUsage}
           readiness={readiness}

@@ -67,6 +67,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "discover-memory-providers",
     "get-writing-assist-settings",
     "set-writing-assist-settings",
+    "translate-text",
   ];
 
   for (const ch of newChannels) {
