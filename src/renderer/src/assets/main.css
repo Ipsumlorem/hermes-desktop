@@ -2477,6 +2477,13 @@ body {
   padding: 4px;
 }
 
+.chat-autocomplete-footer {
+  padding: 6px 12px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
 .chat-autocomplete-item {
   display: flex;
   align-items: center;
