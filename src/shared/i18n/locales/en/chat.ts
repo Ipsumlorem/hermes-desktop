@@ -35,6 +35,7 @@ export default {
   voiceInput: "Voice input",
   voiceStop: "Stop recording",
   voiceTranscribing: "Transcribing…",
+  autocompleteTitle: "Autocomplete",
   translateDraft: "Translate draft",
   translateSelection: "Translate selection",
   translating: "Translating…",
