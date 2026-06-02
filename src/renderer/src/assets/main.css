@@ -2447,6 +2447,59 @@ body {
   color: var(--text-muted);
 }
 
+.chat-autocomplete-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 24px;
+  right: 24px;
+  margin-bottom: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  z-index: 49;
+}
+
+.chat-autocomplete-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-autocomplete-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.chat-autocomplete-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.chat-autocomplete-item:hover,
+.chat-autocomplete-item-active {
+  background: var(--bg-hover);
+}
+
+.chat-autocomplete-word {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
 .chat-send-btn {
   width: 34px;
   height: 34px;

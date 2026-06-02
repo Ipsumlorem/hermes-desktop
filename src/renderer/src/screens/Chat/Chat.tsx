@@ -18,6 +18,7 @@ import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import type { Attachment } from "../../../../shared/attachments";
 import type { ChatMessage, UsageState } from "./types";
 import type {
+  WritingAssistAutocompleteSettings,
   WritingAssistSettings,
   WritingAssistTranslationSettings,
 } from "../../../../shared/writing-assist";
@@ -389,6 +390,8 @@ function Chat({
     : null;
   const translationSettings: WritingAssistTranslationSettings | undefined =
     writingAssist.enabled ? writingAssist.translation : undefined;
+  const autocompleteSettings: WritingAssistAutocompleteSettings | undefined =
+    writingAssist.enabled ? writingAssist.autocomplete : undefined;
 
   return (
     <div
@@ -447,6 +450,7 @@ function Chat({
             writingAssist.enabled &&
             writingAssist.spellcheck.mode === "native"
           }
+          autocompleteSettings={autocompleteSettings}
           translationSettings={translationSettings}
           translationModelMissing={translationModelMissing}
           profile={profile}

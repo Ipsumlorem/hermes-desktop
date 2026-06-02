@@ -136,4 +136,55 @@ describe("ChatInput", () => {
       screen.getByRole("button", { name: "chat.translateDraft" }),
     ).toHaveAttribute("title", "chat.translationModelFallback");
   });
+
+  it("shows dictionary autocomplete suggestions from sent drafts", () => {
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "dictionary",
+          modelRef: "",
+          debounceMs: 250,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "hello world" } });
+    fireEvent.click(screen.getByRole("button", { name: "chat.send" }));
+    fireEvent.change(textarea, { target: { value: "he" } });
+
+    expect(screen.getByText("hello")).toBeInTheDocument();
+  });
+
+  it("accepts a dictionary autocomplete suggestion with Tab", () => {
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "dictionary",
+          modelRef: "",
+          debounceMs: 250,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello world" } });
+    fireEvent.click(screen.getByRole("button", { name: "chat.send" }));
+    fireEvent.change(textarea, { target: { value: "he" } });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+
+    expect(textarea.value).toBe("hello ");
+  });
 });

@@ -28,7 +28,10 @@ import {
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import type { Attachment } from "../../../../shared/attachments";
-import type { WritingAssistTranslationSettings } from "../../../../shared/writing-assist";
+import type {
+  WritingAssistAutocompleteSettings,
+  WritingAssistTranslationSettings,
+} from "../../../../shared/writing-assist";
 
 export interface ChatInputHandle {
   setText(text: string): void;
@@ -52,6 +55,7 @@ interface ChatInputProps {
   sessionId?: string | null;
   remoteMode?: boolean;
   spellCheck?: boolean;
+  autocompleteSettings?: WritingAssistAutocompleteSettings;
   translationSettings?: WritingAssistTranslationSettings;
   translationModelMissing?: boolean;
   /** Active profile — used to resolve the provider for voice transcription. */
@@ -77,6 +81,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       sessionId,
       remoteMode,
       spellCheck = true,
+      autocompleteSettings,
       translationSettings,
       translationModelMissing = false,
       profile,
@@ -94,6 +99,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashFilter, setSlashFilter] = useState("");
     const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+    const [autocompleteSelectedIndex, setAutocompleteSelectedIndex] =
+      useState(0);
+    const [inputFocused, setInputFocused] = useState(false);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
     const [translationError, setTranslationError] = useState<string | null>(
@@ -213,6 +221,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setAttachmentError(null);
           setTranslationError(null);
           setSelectionRange({ start: 0, end: 0 });
+          setAutocompleteSelectedIndex(0);
+          setInputFocused(false);
           if (inputRef.current) inputRef.current.style.height = "auto";
         },
         focus(): void {
@@ -265,6 +275,51 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       [slashMenuOpen, slashFilter],
     );
 
+    const autocompleteEnabled =
+      autocompleteSettings?.mode === "dictionary" &&
+      autocompleteSettings.minChars > 0;
+    const autocompleteWords = useMemo(() => {
+      const map = new Map<string, string>();
+      for (const entry of history.entries) {
+        for (const match of entry.matchAll(/[A-Za-zÀ-ÖØ-öø-ÿ][\w'-]{1,}/g)) {
+          const word = match[0];
+          const normalized = word.toLowerCase();
+          if (!map.has(normalized)) {
+            map.set(normalized, word);
+          }
+        }
+      }
+      return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+    }, [history.entries]);
+    const autocompleteRange = useMemo(() => {
+      if (!autocompleteEnabled) return null;
+      if (slashMenuOpen) return null;
+      if (selectionRange.start !== selectionRange.end) return null;
+      if (selectionRange.start !== input.length) return null;
+      const beforeCaret = input.slice(0, selectionRange.start);
+      const match = beforeCaret.match(/(^|\s)([A-Za-zÀ-ÖØ-öø-ÿ][\w'-]*)$/);
+      if (!match) return null;
+      const prefix = match[2];
+      if (prefix.length < autocompleteSettings.minChars) return null;
+      return {
+        start: beforeCaret.length - prefix.length,
+        end: beforeCaret.length,
+        prefix,
+      };
+    }, [autocompleteEnabled, autocompleteSettings, input, selectionRange, slashMenuOpen]);
+    const autocompleteSuggestions = useMemo(() => {
+      if (!autocompleteRange) return [];
+      const prefix = autocompleteRange.prefix.toLowerCase();
+      return autocompleteWords
+        .filter((word) => {
+          const normalized = word.toLowerCase();
+          return normalized.startsWith(prefix) && normalized !== prefix;
+        })
+        .slice(0, 5);
+    }, [autocompleteRange, autocompleteWords]);
+    const autocompleteOpen =
+      inputFocused && autocompleteSuggestions.length > 0;
+
     const translationConfigured = translationSettings?.mode === "on_demand";
     const translationTargetConfigured =
       !!translationSettings?.targetLanguage.trim();
@@ -285,6 +340,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setAttachmentError(null);
       setTranslationError(null);
       setSelectionRange({ start: 0, end: 0 });
+      setAutocompleteSelectedIndex(0);
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 
@@ -326,6 +382,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const value = e.target.value;
       setInput(value);
       setTranslationError(null);
+      setAutocompleteSelectedIndex(0);
       setSelectionRange({
         start: e.target.selectionStart ?? 0,
         end: e.target.selectionEnd ?? 0,
@@ -367,6 +424,20 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         inputRef.current?.focus();
         inputRef.current?.setSelectionRange(nextCursor, nextCursor);
       });
+    }
+
+    function acceptAutocomplete(word: string): void {
+      if (!autocompleteRange) return;
+      const nextInput =
+        `${input.slice(0, autocompleteRange.start)}${word} ` +
+        input.slice(autocompleteRange.end);
+      setInput(nextInput);
+      requestAnimationFrame(() => {
+        autoResize();
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(nextInput.length, nextInput.length);
+      });
+      setAutocompleteSelectedIndex(0);
     }
 
     function normalizeTranslationError(error: unknown): string {
@@ -445,6 +516,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
       if (isImeComposing(e)) return;
+
+      if (autocompleteOpen && autocompleteSuggestions.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setAutocompleteSelectedIndex((i) =>
+            i < autocompleteSuggestions.length - 1 ? i + 1 : 0,
+          );
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setAutocompleteSelectedIndex((i) =>
+            i > 0 ? i - 1 : autocompleteSuggestions.length - 1,
+          );
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          acceptAutocomplete(autocompleteSuggestions[autocompleteSelectedIndex]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setAutocompleteSelectedIndex(0);
+          return;
+        }
+      }
 
       // Slash menu keyboard navigation
       if (slashMenuOpen && filteredSlashCommands.length > 0) {
@@ -547,6 +645,29 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     return (
       <>
+        {autocompleteOpen && (
+          <div className="chat-autocomplete-menu">
+            <div className="chat-autocomplete-header">
+              {t("chat.autocompleteTitle")}
+            </div>
+            <div className="chat-autocomplete-list">
+              {autocompleteSuggestions.map((word, i) => (
+                <button
+                  key={word}
+                  className={`chat-autocomplete-item ${i === autocompleteSelectedIndex ? "chat-autocomplete-item-active" : ""}`}
+                  onMouseEnter={() => setAutocompleteSelectedIndex(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    acceptAutocomplete(word);
+                  }}
+                  type="button"
+                >
+                  <span className="chat-autocomplete-word">{word}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {slashMenuOpen && filteredSlashCommands.length > 0 && (
           <div className="slash-menu" ref={slashMenuRef}>
             <div className="slash-menu-header">
@@ -636,6 +757,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onSelect={(e) => updateSelectionFromTarget(e.currentTarget)}
             onClick={(e) => updateSelectionFromTarget(e.currentTarget)}
             onKeyUp={(e) => updateSelectionFromTarget(e.currentTarget)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             rows={1}
             autoFocus
           />

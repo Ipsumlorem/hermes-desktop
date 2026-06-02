@@ -8,6 +8,8 @@ interface UseInputHistoryArgs {
 }
 
 interface UseInputHistoryResult {
+  /** Previously sent drafts, used by local autocomplete and history recall. */
+  entries: string[];
   /** Append a freshly-sent message to history; resets the cursor. */
   push: (text: string) => void;
   /** Move backwards through history; returns false if there's nothing to recall. */
@@ -65,5 +67,5 @@ export function useInputHistory({
   const isNavigating = useCallback(() => indexRef.current !== -1, []);
   const size = useCallback(() => history.length, [history.length]);
 
-  return { push, recallPrev, recallNext, isNavigating, size };
+  return { entries: history, push, recallPrev, recallNext, isNavigating, size };
 }
