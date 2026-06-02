@@ -42,6 +42,10 @@ export default {
       targetPlaceholder: "e.g. German, English, Spanish",
       targetHint:
         "Leave blank until you know the target language you want to use most often.",
+      modelFallback:
+        "If this saved model is missing later, translation falls back to the active chat model.",
+      modelMissing:
+        "This saved model is no longer available. Translation will fall back to the active chat model until you choose another one.",
       preserveTone: "Preserve tone when translating",
     },
   },

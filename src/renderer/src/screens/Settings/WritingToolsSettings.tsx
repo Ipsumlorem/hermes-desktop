@@ -82,6 +82,10 @@ export function WritingToolsSettings(): React.JSX.Element {
     );
   }
 
+  const translationModelMissing =
+    !!settings.translation.modelRef &&
+    !models.some((model) => model.id === settings.translation.modelRef);
+
   return (
     <div className="settings-section">
       <div className="settings-section-title">
@@ -230,6 +234,11 @@ export function WritingToolsSettings(): React.JSX.Element {
                 }),
               loading || !settings.enabled,
             )}
+            <div className="settings-field-hint">
+              {translationModelMissing
+                ? t("settings.writingTools.translation.modelMissing")
+                : t("settings.writingTools.translation.modelFallback")}
+            </div>
           </div>
 
           <div className="settings-field">

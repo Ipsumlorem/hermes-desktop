@@ -38,6 +38,17 @@ export default {
   translateDraft: "Translate draft",
   translateSelection: "Translate selection",
   translating: "Translating…",
+  translationDisabledBusy:
+    "Wait for the current response to finish before translating.",
+  translationDisabledUnavailable:
+    "Translation is unavailable until the current chat model is ready.",
+  translationDisabledSelection: "Select text in the draft to translate only that part.",
+  translationDisabledTarget:
+    "Set a target language in Settings → Writing Tools before translating.",
+  translationModelFallback:
+    "The saved translation model is no longer available. Hermes will use the active chat model instead.",
+  translationModelInvalid:
+    "The selected translation model is incomplete. Choose another saved model in Settings → Writing Tools.",
   translationFailed: "Translation failed. Check your writing tools settings and model access.",
   contextWindow: "Context window",
   contextUsed: "{{pct}}% used ({{left}}% left)",
