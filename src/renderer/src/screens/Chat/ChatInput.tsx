@@ -41,6 +41,7 @@ interface ChatInputProps {
   hasSession: boolean;
   sessionId?: string | null;
   remoteMode?: boolean;
+  spellCheck?: boolean;
   /** Pre-send validation state. When `ok` is false, Send is disabled
    * and an inline banner explains why + how to fix it. */
   readiness?: ChatInputReadiness;
@@ -56,6 +57,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       hasSession,
       sessionId,
       remoteMode,
+      spellCheck = true,
       readiness,
       onSubmit,
       onQuickAsk,
@@ -462,6 +464,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             className="chat-input"
             placeholder={t("chat.typeMessage")}
             value={input}
+            spellCheck={spellCheck}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}

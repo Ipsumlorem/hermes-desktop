@@ -182,6 +182,11 @@ import {
   isAllowedWebviewUrl,
 } from "./security";
 import type { AppLocale } from "../shared/i18n/types";
+import type { WritingAssistSettings } from "../shared/writing-assist";
+import {
+  getWritingAssistSettings,
+  setWritingAssistSettings,
+} from "./writing-assist-config";
 import {
   sshListInstalledSkills,
   sshGetSkillContent,
@@ -277,6 +282,7 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      spellcheck: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
       webviewTag: true,
@@ -527,6 +533,14 @@ function setupIPC(): void {
   ipcMain.handle("get-locale", () => getAppLocale());
   ipcMain.handle("set-locale", (_event, locale: AppLocale) =>
     setAppLocale(locale),
+  );
+  ipcMain.handle("get-writing-assist-settings", () =>
+    getWritingAssistSettings(),
+  );
+  ipcMain.handle(
+    "set-writing-assist-settings",
+    (_event, settings: WritingAssistSettings) =>
+      setWritingAssistSettings(settings),
   );
 
   ipcMain.handle("get-env", (_event, profile?: string) => {
