@@ -263,4 +263,78 @@ describe("ChatInput", () => {
 
     expect(textarea.value).toBe("he there");
   });
+
+  it("dismisses autocomplete suggestions with Escape until the input changes", async () => {
+    vi.useFakeTimers();
+    window.hermesAPI = {
+      suggestAutocomplete: vi.fn().mockResolvedValue("there"),
+    } as unknown as typeof window.hermesAPI;
+
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "llm",
+          modelRef: "model-1",
+          debounceMs: 50,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, { target: { value: "he" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(screen.queryByText("there")).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "hel" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+
+    expect(screen.getByText("there")).toBeInTheDocument();
+  });
+
+  it("suppresses llm autocomplete suggestions that duplicate the current draft ending", async () => {
+    vi.useFakeTimers();
+    window.hermesAPI = {
+      suggestAutocomplete: vi.fn().mockResolvedValue("there"),
+    } as unknown as typeof window.hermesAPI;
+
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={false}
+        autocompleteSettings={{
+          mode: "llm",
+          modelRef: "model-1",
+          debounceMs: 50,
+          minChars: 2,
+        }}
+        onSubmit={() => {}}
+        onQuickAsk={() => {}}
+        onAbort={() => {}}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, { target: { value: "hello there" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+
+    expect(screen.queryByText("there")).not.toBeInTheDocument();
+  });
 });

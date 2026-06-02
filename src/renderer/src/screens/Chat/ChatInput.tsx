@@ -102,6 +102,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [autocompleteSelectedIndex, setAutocompleteSelectedIndex] =
       useState(0);
     const [inputFocused, setInputFocused] = useState(false);
+    const [autocompleteDismissedKey, setAutocompleteDismissedKey] = useState<
+      string | null
+    >(null);
     const [llmAutocompleteSuggestion, setLlmAutocompleteSuggestion] =
       useState("");
     const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -226,6 +229,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setLlmAutocompleteSuggestion("");
           setSelectionRange({ start: 0, end: 0 });
           setAutocompleteSelectedIndex(0);
+          setAutocompleteDismissedKey(null);
           setInputFocused(false);
           if (inputRef.current) inputRef.current.style.height = "auto";
         },
@@ -281,6 +285,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const autocompleteEnabled =
       !!autocompleteSettings && autocompleteSettings.minChars > 0;
+    const readinessOk = readiness?.ok !== false;
     const dictionaryAutocompleteEnabled =
       autocompleteSettings?.mode === "dictionary" &&
       autocompleteSettings.minChars > 0;
@@ -302,6 +307,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [history.entries]);
     const autocompleteRange = useMemo(() => {
       if (!autocompleteEnabled) return null;
+      if (isLoading || !readinessOk) return null;
       if (slashMenuOpen) return null;
       if (selectionRange.start !== selectionRange.end) return null;
       if (selectionRange.start !== input.length) return null;
@@ -315,7 +321,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         end: beforeCaret.length,
         prefix,
       };
-    }, [autocompleteEnabled, autocompleteSettings, input, selectionRange, slashMenuOpen]);
+    }, [
+      autocompleteEnabled,
+      autocompleteSettings,
+      input,
+      isLoading,
+      readinessOk,
+      selectionRange,
+      slashMenuOpen,
+    ]);
+    const autocompleteContextKey = useMemo(
+      () =>
+        autocompleteRange
+          ? `${autocompleteSettings?.mode || "off"}:${input}`
+          : null,
+      [autocompleteRange, autocompleteSettings?.mode, input],
+    );
     useEffect(() => {
       if (!llmAutocompleteEnabled || !autocompleteRange || !inputFocused) {
         setLlmAutocompleteSuggestion("");
@@ -356,15 +377,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           })
           .slice(0, 5);
       }
-      return llmAutocompleteSuggestion ? [llmAutocompleteSuggestion] : [];
+      const normalizedSuggestion = llmAutocompleteSuggestion
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!normalizedSuggestion) return [];
+      if (normalizedSuggestion.split(/\s+/).length > 12) return [];
+      const lowerSuggestion = normalizedSuggestion.toLowerCase();
+      const lowerInput = input.trimEnd().toLowerCase();
+      if (
+        lowerInput === lowerSuggestion ||
+        lowerInput.endsWith(` ${lowerSuggestion}`)
+      ) {
+        return [];
+      }
+      return [normalizedSuggestion];
     }, [
       autocompleteRange,
       autocompleteWords,
       dictionaryAutocompleteEnabled,
+      input,
       llmAutocompleteSuggestion,
     ]);
     const autocompleteOpen =
-      inputFocused && autocompleteSuggestions.length > 0;
+      inputFocused &&
+      autocompleteSuggestions.length > 0 &&
+      autocompleteDismissedKey !== autocompleteContextKey;
 
     const translationConfigured = translationSettings?.mode === "on_demand";
     const translationTargetConfigured =
@@ -372,7 +409,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const translationEnabled =
       translationConfigured && translationTargetConfigured;
     const hasSelection = selectionRange.end > selectionRange.start;
-    const readinessOk = readiness?.ok !== false;
     const canTranslate =
       translationEnabled &&
       readinessOk &&
@@ -388,6 +424,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setLlmAutocompleteSuggestion("");
       setSelectionRange({ start: 0, end: 0 });
       setAutocompleteSelectedIndex(0);
+      setAutocompleteDismissedKey(null);
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 
@@ -431,6 +468,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setTranslationError(null);
       setLlmAutocompleteSuggestion("");
       setAutocompleteSelectedIndex(0);
+      setAutocompleteDismissedKey(null);
       setSelectionRange({
         start: e.target.selectionStart ?? 0,
         end: e.target.selectionEnd ?? 0,
@@ -496,6 +534,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       });
       setLlmAutocompleteSuggestion("");
       setAutocompleteSelectedIndex(0);
+      setAutocompleteDismissedKey(null);
     }
 
     function normalizeTranslationError(error: unknown): string {
@@ -597,7 +636,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         if (e.key === "Escape") {
           e.preventDefault();
-          setAutocompleteSelectedIndex(0);
+          setAutocompleteDismissedKey(autocompleteContextKey);
           return;
         }
       }
@@ -723,6 +762,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   <span className="chat-autocomplete-word">{word}</span>
                 </button>
               ))}
+            </div>
+            <div className="chat-autocomplete-footer">
+              {t("chat.autocompleteHint")}
             </div>
           </div>
         )}

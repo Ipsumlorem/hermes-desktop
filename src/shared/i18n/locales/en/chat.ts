@@ -36,6 +36,7 @@ export default {
   voiceStop: "Stop recording",
   voiceTranscribing: "Transcribing…",
   autocompleteTitle: "Autocomplete",
+  autocompleteHint: "Tab to accept, Esc to dismiss",
   translateDraft: "Translate draft",
   translateSelection: "Translate selection",
   translating: "Translating…",
